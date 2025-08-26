@@ -282,8 +282,7 @@ export default function OthelloApp() {
                           className={`aspect-square rounded-lg border overflow-hidden ${active ? "ring-2 ring-emerald-500 border-emerald-500" : ""}`}
                           aria-label={`黒: ${opt.label}`}
                         >
-                          <img src={opt.src} alt={opt.label} className="w-full h-full object-contain" />
-                        </button>
+<Image src={opt.src} alt={opt.label} width={64} height={64} className="w-full h-full object-contain" />                        </button>
                       );
                     })}
                   </div>
@@ -301,7 +300,7 @@ export default function OthelloApp() {
                           className={`aspect-square rounded-lg border overflow-hidden ${active ? "ring-2 ring-emerald-500 border-emerald-500" : ""}`}
                           aria-label={`白: ${opt.label}`}
                         >
-                          <img src={opt.src} alt={opt.label} className="w-full h-full object-contain" />
+                          <Image src={opt.src} alt={opt.label} width={64} height={64} className="w-full h-full object-contain" />
                         </button>
                       );
                     })}
