@@ -18,10 +18,9 @@ type Screen = 'home' | 'game';
 
 // 猫スキン候補（public 直下のパス）
 const CAT_OPTIONS = [
-  { id: "american",  label: "アメリカンショートヘア",   src: "/pieces/american-shorthair.png" },
-  { id: "siamese",   label: "シャム",                 src: "/pieces/siamese.png" },
-  { id: "scottish",  label: "スコティッシュフォールド", src: "/pieces/scottish-fold.png" },
-  { id: "norwegian", label: "ノルウェージャンフォレスト", src: "/pieces/norwegian-forest.png" },
+  { id: "american",  label: "アメリカンショートヘア",     src: "/pieces/american-shorthair.png" },
+  { id: "siamese",   label: "シャム",                   src: "/pieces/siamese.png" },
+  { id: "scottish",  label: "スコティッシュフォールド",   src: "/pieces/scottish-fold.png" },
   { id: "british",   label: "ブリティッシュショートヘア", src: "/pieces/british-shorthair.png" },
 ];
 
@@ -273,8 +272,8 @@ export default function OthelloApp() {
                 {/* 黒 */}
                 <div className="rounded-lg bg-white border p-3">
                   <div className="text-xs text-gray-500 mb-2">黒のコマ</div>
-                  <div className="grid grid-cols-5 gap-2">
-                    {CAT_OPTIONS.map(opt => {
+                  + <div className="grid grid-cols-4 gap-2">
+                  {CAT_OPTIONS.map(opt => {
                       const active = preSkin.black === opt.src;
                       return (
                         <button
