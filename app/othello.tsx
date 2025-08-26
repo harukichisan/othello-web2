@@ -1,8 +1,8 @@
 'use client';
 
 import Image from 'next/image';
-import React, { useEffect, useMemo, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient'; // 使わない場合は一旦削除してOK
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { supabase } from '@/lib/supabaseClient';
 
 /** =======================
  *  型・定数
@@ -17,6 +17,12 @@ const DIRS: Array<[number, number]> = [
 
 type AiLevel = 'easy' | 'normal' | 'hard';
 type Screen = 'home' | 'game';
+
+// === ONLINE: 追加
+type OnlineMode = 'local' | 'online';
+type GameRow = { id: string; board: number[][]; current_player: number; created_at?: string };
+const toJsonBoard = (b: Cell[][]): number[][] => b.map(r => r.map(v => v as number));
+const fromJsonBoard = (b: number[][]): Cell[][] => b.map(r => r.map(v => v as Cell));
 
 // 猫スキン候補（public/pieces 配下）
 const CAT_OPTIONS = [
@@ -180,6 +186,12 @@ export default function OthelloApp() {
   const [preLevel, setPreLevel]       = useState<AiLevel>('normal');
   const [preFirst, setPreFirst]       = useState<'you' | 'cpu'>('you');
 
+  // === ONLINE: 追加 state
+  const [mode, setMode] = useState<OnlineMode>('local'); // ローカル/オンライン
+  const [roomId, setRoomId] = useState<string>('');      // ルームID
+  const [mySide, setMySide] = useState<1 | 2>(1);        // 自分の色（作成=1/参加=2）
+  const subscribedRef = useRef<string | null>(null);     // 購読済みルーム
+
   // 猫スキン（ホーム選択＆ゲーム反映）
   const [preSkin, setPreSkin] = useState<Skin>({
     black: CAT_OPTIONS[0].src, // 黒=アメリカン
@@ -213,7 +225,119 @@ export default function OthelloApp() {
     setHistory([]);
   };
 
+  // === ONLINE: 共通の購読解除（必要なら）
+  const backToHome = () => {
+    setScreen('home');
+    hardReset();
+    setAiSide(0);
+    subscribedRef.current = null;
+  };
+
+  // === ONLINE: ゲーム開始（A〜Fの D を反映）
+  const startGameFromHome = async () => {
+    hardReset();
+    setSkin(preSkin); // ホームの選択を反映
+
+    // ローカル or CPU は従来挙動
+    if (preOpponent === 'cpu' || mode === 'local') {
+      if (preOpponent === 'player') {
+        setAiSide(0);
+        setScreen('game');
+        return;
+      }
+      setAiLevel(preLevel);
+      if (preFirst === 'you') {
+        setAiSide(2);
+        setPlayer(1);
+      } else {
+        setAiSide(1);
+        setPlayer(1);
+      }
+      setScreen('game');
+      return;
+    }
+
+    // === ONLINE ===
+    if (!roomId) { alert('オンライン対戦はルームIDが必要です'); return; }
+
+    const { data, error } = await supabase
+      .from('games')
+      .select('*')
+      .eq('id', roomId)
+      .maybeSingle();
+
+    if (error) { alert('games 取得失敗: ' + error.message); return; }
+    if (!data) { alert('ルームが存在しません。先に「ルーム作成」を押してください'); return; }
+
+    const row = data as GameRow;
+    setBoard(fromJsonBoard(row.board));
+    setPlayer(row.current_player as Cell);
+    setAiSide(0);
+    setScreen('game');
+
+    // すでに他ルームを購読していたらスキップ
+    if (subscribedRef.current !== roomId) {
+      subscribedRef.current = roomId;
+      supabase
+        .channel(`games:${roomId}`)
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${roomId}` },
+          (payload) => {
+            const updated = payload.new as GameRow;
+            setBoard(fromJsonBoard(updated.board));
+            setPlayer(updated.current_player as Cell);
+          }
+        )
+        .subscribe();
+    }
+  };
+
+  // === ONLINE: 手を置く処理（A〜F の E を反映）
+  const place = async (r: number, c: number) => {
+    if (screen !== 'game' || gameOver) return;
+
+    if (mode === 'online') {
+      if (player !== mySide) return; // 相手番は置けない
+    } else {
+      // CPU戦では AI の番は無効
+      if ((aiSide === 1 && player === 1) || (aiSide === 2 && player === 2)) return;
+    }
+
+    const f = flipsForMove(board, r, c, player);
+    if (!f.length) return;
+
+    setHistory(h => [...h, { board, player }]);
+    const nb  = applyMove(board, r, c, player);
+    const opp = opponent(player);
+
+    if (mode === 'online') {
+      if (!roomId) return;
+      const nextPlayer = validMoves(nb, opp).length ? opp : player; // パス判定
+      const { error } = await supabase
+        .from('games')
+        .update({ board: toJsonBoard(nb), current_player: nextPlayer })
+        .eq('id', roomId);
+
+      if (error) {
+        console.error('DB更新失敗:', error);
+      }
+      // 自分側は即時反映（相手側は購読で反映）
+      setBoard(nb);
+      setPlayer(nextPlayer);
+    } else {
+      if (validMoves(nb, opp).length) {
+        setBoard(nb);
+        setPlayer(opp);
+      } else {
+        setBoard(nb);
+        setPlayer(player);
+      }
+    }
+  };
+
   const commitMove = (r: number, c: number) => {
+    // （ローカル用に残しておくが、place 内で直接使っている）
     const f = flipsForMove(board, r, c, player);
     if (!f.length) return;
     setHistory(h => [...h, { board, player }]);
@@ -228,13 +352,6 @@ export default function OthelloApp() {
     }
   };
 
-  // 操作
-  const place = (r: number, c: number) => {
-    if (screen !== 'game' || gameOver) return;
-    if ((aiSide === 1 && player === 1) || (aiSide === 2 && player === 2)) return; // AI手番は無効
-    commitMove(r, c);
-  };
-
   const undo = () => {
     const prev = history.at(-1);
     if (!prev) return;
@@ -244,31 +361,10 @@ export default function OthelloApp() {
   };
 
   const passTurn   = () => { if (moves.length === 0) setPlayer(opponent(player)); };
-  const backToHome = () => { setScreen('home'); hardReset(); setAiSide(0); };
 
-  // ホームから開始
-  const startGameFromHome = () => {
-    hardReset();
-    setSkin(preSkin); // ホームの選択を反映
-    if (preOpponent === 'player') {
-      setAiSide(0);
-      setScreen('game');
-      return;
-    }
-    setAiLevel(preLevel);
-    if (preFirst === 'you') {
-      setAiSide(2);
-      setPlayer(1);
-    } else {
-      setAiSide(1);
-      setPlayer(1);
-    }
-    setScreen('game');
-  };
-
-  // AI思考
+  // AI思考（ローカルCPUのみ）
   useEffect(() => {
-    if (screen !== 'game' || aiSide === 0) return;
+    if (screen !== 'game' || aiSide === 0 || mode === 'online') return;
     const aiTurn = (aiSide === 1 && player === 1) || (aiSide === 2 && player === 2);
     if (!aiTurn) return;
 
@@ -295,7 +391,7 @@ export default function OthelloApp() {
     }, 200);
 
     return () => clearTimeout(id);
-  }, [board, player, aiSide, aiLevel, screen, moves]);
+  }, [board, player, aiSide, aiLevel, screen, moves, mode]);
 
   /** ========== 画面 ========== */
   if (screen === 'home') {
@@ -322,6 +418,76 @@ export default function OthelloApp() {
                   Player
                 </button>
               </div>
+
+              {/* === ONLINE: モード切替 & ルーム操作 */}
+              {preOpponent === 'player' && (
+                <>
+                  <div className="text-sm mb-1">対戦モード</div>
+                  <div className="flex gap-2 mb-3">
+                    <button
+                      className={`flex-1 px-4 py-2 rounded ${mode==='local'?'bg-emerald-600 text-white':'bg-white border'}`}
+                      onClick={()=>setMode('local')}
+                    >
+                      同じ画面（ローカル）
+                    </button>
+                    <button
+                      className={`flex-1 px-4 py-2 rounded ${mode==='online'?'bg-emerald-600 text-white':'bg-white border'}`}
+                      onClick={()=>setMode('online')}
+                    >
+                      オンライン（β）
+                    </button>
+                  </div>
+
+                  {mode==='online' && (
+                    <div className="rounded-lg bg-white border p-3 space-y-2">
+                      <div className="text-xs text-gray-500">オンライン対戦のルーム</div>
+                      <div className="flex gap-2">
+                        <input
+                          value={roomId}
+                          onChange={(e)=>setRoomId(e.target.value.trim())}
+                          placeholder="ルームID（英数字）"
+                          className="flex-1 px-3 py-2 rounded border"
+                        />
+                        <button
+                          className="px-3 py-2 rounded border"
+                          onClick={async ()=>{
+                            if(!roomId) return alert('ルームIDを入力してください');
+                            const { error } = await supabase.from('games').insert({
+                              id: roomId,
+                              board: toJsonBoard(initialBoard()),
+                              current_player: 1,
+                            });
+                            if (error) {
+                              alert('作成失敗（既に存在？）: '+ error.message);
+                            } else {
+                              setMySide(1);
+                              alert('ルーム作成 OK。相手にIDを共有してください');
+                            }
+                          }}
+                        >
+                          ルーム作成
+                        </button>
+                        <button
+                          className="px-3 py-2 rounded border"
+                          onClick={async ()=>{
+                            if(!roomId) return alert('ルームIDを入力してください');
+                            const { data, error } = await supabase.from('games').select('id').eq('id', roomId).maybeSingle();
+                            if (error) return alert('検索失敗: ' + error.message);
+                            if (!data) return alert('そのルームは存在しません');
+                            setMySide(2);
+                            alert('ルーム参加 OK。ゲーム開始を押してください');
+                          }}
+                        >
+                          参加
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        作成者は<strong>黒</strong>、参加者は<strong>白</strong>になります。
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
 
               {preOpponent === 'cpu' && (
                 <>
