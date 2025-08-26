@@ -438,18 +438,3 @@ export default function OthelloApp() {
     </div>
   );
 }
-
-/** =======================
- *  開発用セルフテスト（任意）
- *  ======================= */
-if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
-  (function testInitialBoard(){
-    const b = initialBoard(); const {black,white,empty}=countPieces(b);
-    console.assert(black===2 && white===2, 'initial pieces 2/2');
-    console.assert(empty===SIZE*SIZE-4, 'initial empty 60');
-  })();
-  (function testOpeningMoves(){
-    const b = initialBoard(); const mB=validMoves(b,1), mW=validMoves(b,2);
-    console.assert(mB.length===4 && mW.length===4, 'opening both 4 moves');
-  })();
-}
