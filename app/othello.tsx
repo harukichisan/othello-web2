@@ -1,5 +1,5 @@
 'use client';
-import Image from "next/image";
+import Image from 'next/image';
 import React, { useEffect, useMemo, useState } from 'react';
 
 /** =======================
@@ -16,12 +16,11 @@ const DIRS: Array<[number, number]> = [
 type AiLevel = 'easy' | 'normal' | 'hard';
 type Screen = 'home' | 'game';
 
-// 猫スキン候補（public 直下のパス）
+// 猫スキン候補（public/pieces 配下）
 const CAT_OPTIONS = [
-  { id: "american",  label: "アメリカンショートヘア",     src: "/pieces/american-shorthair.png" },
-  { id: "siamese",   label: "シャム",                   src: "/pieces/siamese.png" },
-  { id: "scottish",  label: "スコティッシュフォールド",   src: "/pieces/scottish-fold.png" },
-  { id: "british",   label: "ブリティッシュショートヘア", src: "/pieces/british-shorthair.png" },
+  { id: 'american', label: 'アメリカンショートヘア', src: '/pieces/american-shorthair.png' },
+  { id: 'siamese', label: 'シャム', src: '/pieces/siamese.png' },
+  { id: 'scottish', label: 'スコティッシュフォールド', src: '/pieces/scottish-fold.png' },
 ];
 
 type Skin = { black: string; white: string };
@@ -65,7 +64,8 @@ function applyMove(board: Cell[][], r: number, c: number, player: Cell): Cell[][
   const f = flipsForMove(board, r, c, player);
   if (!f.length) return board;
   const nb = board.map(row => row.slice());
-  nb[r][c] = player; for (const [rr, cc] of f) nb[rr][cc] = player;
+  nb[r][c] = player;
+  for (const [rr, cc] of f) nb[rr][cc] = player;
   return nb;
 }
 
@@ -193,7 +193,13 @@ export default function OthelloApp() {
     if ((aiSide === 1 && player === 1) || (aiSide === 2 && player === 2)) return; // AI手番は無効
     commitMove(r, c);
   };
-  const undo = () => { const prev = history.at(-1); if (!prev) return; setBoard(prev.board); setPlayer(prev.player); setHistory(h => h.slice(0, -1)); };
+  const undo = () => {
+    const prev = history.at(-1);
+    if (!prev) return;
+    setBoard(prev.board);
+    setPlayer(prev.player);
+    setHistory(h => h.slice(0, -1));
+  };
   const passTurn = () => { if (moves.length === 0) setPlayer(opponent(player)); };
   const backToHome = () => { setScreen('home'); hardReset(); setAiSide(0); };
 
@@ -272,17 +278,18 @@ export default function OthelloApp() {
                 {/* 黒 */}
                 <div className="rounded-lg bg-white border p-3">
                   <div className="text-xs text-gray-500 mb-2">黒のコマ</div>
-                  + <div className="grid grid-cols-4 gap-2">
-                  {CAT_OPTIONS.map(opt => {
+                                     <div className="grid grid-cols-3 gap-2">
+                    {CAT_OPTIONS.map(opt => {
                       const active = preSkin.black === opt.src;
                       return (
                         <button
                           key={`b-${opt.id}`}
                           onClick={() => setPreSkin(s => ({ ...s, black: opt.src }))}
-                          className={`aspect-square rounded-lg border overflow-hidden ${active ? "ring-2 ring-emerald-500 border-emerald-500" : ""}`}
+                          className={`aspect-square rounded-lg border overflow-hidden ${active ? 'ring-2 ring-emerald-500 border-emerald-500' : ''}`}
                           aria-label={`黒: ${opt.label}`}
                         >
-<Image src={opt.src} alt={opt.label} width={64} height={64} className="w-full h-full object-contain" />                        </button>
+                          <Image src={opt.src} alt={opt.label} width={64} height={64} className="w-full h-full object-contain" />
+                        </button>
                       );
                     })}
                   </div>
@@ -290,14 +297,14 @@ export default function OthelloApp() {
                 {/* 白 */}
                 <div className="rounded-lg bg-white border p-3">
                   <div className="text-xs text-gray-500 mb-2">白のコマ</div>
-                  <div className="grid grid-cols-5 gap-2">
+                                     <div className="grid grid-cols-3 gap-2">
                     {CAT_OPTIONS.map(opt => {
                       const active = preSkin.white === opt.src;
                       return (
                         <button
                           key={`w-${opt.id}`}
                           onClick={() => setPreSkin(s => ({ ...s, white: opt.src }))}
-                          className={`aspect-square rounded-lg border overflow-hidden ${active ? "ring-2 ring-emerald-500 border-emerald-500" : ""}`}
+                          className={`aspect-square rounded-lg border overflow-hidden ${active ? 'ring-2 ring-emerald-500 border-emerald-500' : ''}`}
                           aria-label={`白: ${opt.label}`}
                         >
                           <Image src={opt.src} alt={opt.label} width={64} height={64} className="w-full h-full object-contain" />
@@ -351,38 +358,38 @@ export default function OthelloApp() {
                 style={{ gridTemplateColumns: `repeat(${SIZE}, minmax(0,1fr))`, width: 'min(96vw, 640px)' }}
               >
                 {Array.from({ length: SIZE * SIZE }, (_, i) => {
-                const r = Math.floor(i / SIZE), c = i % SIZE;
-                const cell = board[r][c];
-                const legal = moves.some(m => m.r===r && m.c===c);
-                return (
-                  <button
-                    key={`${r}-${c}`}
-                    onClick={()=>place(r,c)}
-                    className={`aspect-square border border-emerald-900 bg-emerald-700 relative ${legal?'hover:bg-emerald-600 active:bg-emerald-500':''}`}
-                    aria-label={`cell ${r},${c}`}
-                  >
-                    {/* 合法手ヒント */}
-                    {cell===0 && legal && (
-                      <span className="absolute inset-0 m-auto block rounded-full" style={{height:12,width:12,background:'rgba(0,0,0,.35)'}}/>
-                    )}
-                    {/* 石（猫ピース表示） */}
-                    {cell !== 0 && (
-                      <span className="absolute inset-1 flex items-center justify-center">
-                        <Image
-                          src={cell === 1 ? skin.black : skin.white}
-                          alt={cell === 1 ? "Black cat piece" : "White cat piece"}
-                          width={128}
-                          height={128}
-                          style={{ width: "100%", height: "100%", objectFit: "contain" }}
-                          priority={false}
-                        />
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+                  const r = Math.floor(i / SIZE), c = i % SIZE;
+                  const cell = board[r][c];
+                  const legal = moves.some(m => m.r === r && m.c === c);
+                  return (
+                    <button
+                      key={`${r}-${c}`}
+                      onClick={() => place(r, c)}
+                      className={`aspect-square border border-emerald-900 bg-emerald-700 relative ${legal ? 'hover:bg-emerald-600 active:bg-emerald-500' : ''}`}
+                      aria-label={`cell ${r},${c}`}
+                    >
+                      {/* 合法手ヒント */}
+                      {cell === 0 && legal && (
+                        <span className="absolute inset-0 m-auto block rounded-full" style={{ height: 12, width: 12, background: 'rgba(0,0,0,.35)' }} />
+                      )}
+                      {/* 石（猫ピース表示） */}
+                      {cell !== 0 && (
+                        <span className="absolute inset-1 flex items-center justify-center">
+                          <Image
+                            src={cell === 1 ? skin.black : skin.white}
+                            alt={cell === 1 ? 'Black cat piece' : 'White cat piece'}
+                            width={128}
+                            height={128}
+                            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                            priority={false}
+                          />
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
           </div>
 
           {/* サイドバー */}
