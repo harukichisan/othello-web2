@@ -1,6 +1,8 @@
 'use client';
+
 import Image from 'next/image';
 import React, { useEffect, useMemo, useState } from 'react';
+import { supabase } from '@/lib/supabaseClient'; // 使わない場合は一旦削除してOK
 
 /** =======================
  *  型・定数
@@ -19,7 +21,7 @@ type Screen = 'home' | 'game';
 // 猫スキン候補（public/pieces 配下）
 const CAT_OPTIONS = [
   { id: 'american', label: 'アメリカンショートヘア', src: '/pieces/american-shorthair.png' },
-  { id: 'siamese', label: 'シャム', src: '/pieces/siamese.png' },
+  { id: 'siamese',  label: 'シャム',                   src: '/pieces/siamese.png' },
   { id: 'scottish', label: 'スコティッシュフォールド', src: '/pieces/scottish-fold.png' },
 ];
 
@@ -31,8 +33,8 @@ const initialBoard = (): Cell[][] => {
   return b;
 };
 
-const opponent = (p: Cell): Cell => (p === 1 ? 2 : 1);
-const inBounds = (r: number, c: number) => r >= 0 && r < SIZE && c >= 0 && c < SIZE;
+const opponent  = (p: Cell): Cell   => (p === 1 ? 2 : 1);
+const inBounds  = (r: number, c: number) => r >= 0 && r < SIZE && c >= 0 && c < SIZE;
 
 /** =======================
  *  ルール系ユーティリティ
@@ -45,17 +47,24 @@ function flipsForMove(board: Cell[][], r: number, c: number, player: Cell): [num
   for (const [dr, dc] of DIRS) {
     const path: [number, number][] = [];
     let rr = r + dr, cc = c + dc;
-    while (inBounds(rr, cc) && board[rr][cc] === opp) { path.push([rr, cc]); rr += dr; cc += dc; }
-    if (path.length && inBounds(rr, cc) && board[rr][cc] === player) flips.push(...path);
+    while (inBounds(rr, cc) && board[rr][cc] === opp) {
+      path.push([rr, cc]);
+      rr += dr; cc += dc;
+    }
+    if (path.length && inBounds(rr, cc) && board[rr][cc] === player) {
+      flips.push(...path);
+    }
   }
   return flips;
 }
 
 function validMoves(board: Cell[][], player: Cell) {
   const moves: Array<{ r: number; c: number; flips: [number, number][] }> = [];
-  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
-    const f = flipsForMove(board, r, c, player);
-    if (f.length) moves.push({ r, c, flips: f });
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      const f = flipsForMove(board, r, c, player);
+      if (f.length) moves.push({ r, c, flips: f });
+    }
   }
   return moves;
 }
@@ -71,10 +80,12 @@ function applyMove(board: Cell[][], r: number, c: number, player: Cell): Cell[][
 
 function countPieces(board: Cell[][]) {
   let black = 0, white = 0, empty = 0;
-  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
-    if (board[r][c] === 1) black++;
-    else if (board[r][c] === 2) white++;
-    else empty++;
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if (board[r][c] === 1) black++;
+      else if (board[r][c] === 2) white++;
+      else empty++;
+    }
   }
   return { black, white, empty };
 }
@@ -90,11 +101,16 @@ const WEIGHTS: number[][] = [
   [-20, -40, -5, -5, -5, -5, -40, -20],
   [120, -20, 20, 10, 10, 20, -20, 120],
 ];
+
 function evaluate(board: Cell[][], me: Cell): number {
   const { black, white } = countPieces(board);
   const material = me === 1 ? black - white : white - black;
   let pos = 0;
-  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (board[r][c] === me) pos += WEIGHTS[r][c];
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if (board[r][c] === me) pos += WEIGHTS[r][c];
+    }
+  }
   return material * 10 + pos;
 }
 
@@ -103,32 +119,45 @@ function aiPick(board: Cell[][], player: Cell, level: AiLevel): { r: number; c: 
   const moves = validMoves(board, player);
   if (!moves.length) return null;
 
-  if (level === 'easy') return moves[Math.floor(Math.random() * moves.length)];
+  if (level === 'easy') {
+    return moves[Math.floor(Math.random() * moves.length)];
+  }
 
   if (level === 'normal') {
-    let best = moves[0], bestScore = -Infinity;
+    let best = moves[0];
+    let bestScore = -Infinity;
     for (const m of moves) {
-      const next = applyMove(board, m.r, m.c, player);
+      const next  = applyMove(board, m.r, m.c, player);
       const score = evaluate(next, player);
-      if (score > bestScore) { bestScore = score; best = m; }
+      if (score > bestScore) {
+        bestScore = score;
+        best = m;
+      }
     }
     return { r: best.r, c: best.c };
   }
 
   // hard: shallow minimax (depth=2)
-  let bestMove = moves[0], bestScore = -Infinity;
+  let bestMove = moves[0];
+  let bestScore = -Infinity;
   const opp = opponent(player);
   for (const m of moves) {
     const next = applyMove(board, m.r, m.c, player);
     const oppMoves = validMoves(next, opp);
     let worst = Infinity;
-    if (oppMoves.length === 0) worst = -evaluate(next, opp);
-    else for (const om of oppMoves) {
-      const nn = applyMove(next, om.r, om.c, opp);
-      const s = evaluate(nn, player);
-      if (s < worst) worst = s;
+    if (oppMoves.length === 0) {
+      worst = -evaluate(next, opp);
+    } else {
+      for (const om of oppMoves) {
+        const nn = applyMove(next, om.r, om.c, opp);
+        const s  = evaluate(nn, player);
+        if (s < worst) worst = s;
+      }
     }
-    if (worst > bestScore) { bestScore = worst; bestMove = m; }
+    if (worst > bestScore) {
+      bestScore = worst;
+      bestMove  = m;
+    }
   }
   return { r: bestMove.r, c: bestMove.c };
 }
@@ -148,8 +177,8 @@ export default function OthelloApp() {
 
   // 対戦設定（ホーム）
   const [preOpponent, setPreOpponent] = useState<'cpu' | 'player'>('cpu');
-  const [preLevel, setPreLevel] = useState<AiLevel>('normal');
-  const [preFirst, setPreFirst] = useState<'you' | 'cpu'>('you');
+  const [preLevel, setPreLevel]       = useState<AiLevel>('normal');
+  const [preFirst, setPreFirst]       = useState<'you' | 'cpu'>('you');
 
   // 猫スキン（ホーム選択＆ゲーム反映）
   const [preSkin, setPreSkin] = useState<Skin>({
@@ -159,32 +188,44 @@ export default function OthelloApp() {
   const [skin, setSkin] = useState<Skin>(preSkin);
 
   // ゲーム状態
-  const [board, setBoard] = useState<Cell[][]>(initialBoard);
+  const [board, setBoard]   = useState<Cell[][]>(initialBoard);
   const [player, setPlayer] = useState<Cell>(1); // 1: Black
   const [history, setHistory] = useState<{ board: Cell[][]; player: Cell }[]>([]);
-  const [aiSide, setAiSide] = useState<0 | 1 | 2>(0); // 0:none, 1:black, 2:white
+  const [aiSide, setAiSide]   = useState<0 | 1 | 2>(0); // 0:none, 1:black, 2:white
   const [aiLevel, setAiLevel] = useState<AiLevel>('normal');
   const [aiThinking, setAiThinking] = useState(false);
 
   // 導出
   const moves = useMemo(() => validMoves(board, player), [board, player]);
   const { black, white, empty } = useMemo(() => countPieces(board), [board]);
+
   const gameOver = useMemo(() => {
     if (empty === 0) return true;
-    const myMoves = moves.length;
+    const myMoves  = moves.length;
     const oppMoves = validMoves(board, opponent(player)).length;
     return myMoves === 0 && oppMoves === 0;
   }, [board, moves, player, empty]);
 
   // ヘルパ
-  const hardReset = () => { setBoard(initialBoard()); setPlayer(1); setHistory([]); };
+  const hardReset = () => {
+    setBoard(initialBoard());
+    setPlayer(1);
+    setHistory([]);
+  };
+
   const commitMove = (r: number, c: number) => {
-    const f = flipsForMove(board, r, c, player); if (!f.length) return;
+    const f = flipsForMove(board, r, c, player);
+    if (!f.length) return;
     setHistory(h => [...h, { board, player }]);
-    const nb = applyMove(board, r, c, player);
+    const nb  = applyMove(board, r, c, player);
     const opp = opponent(player);
-    if (validMoves(nb, opp).length) { setBoard(nb); setPlayer(opp); }
-    else { setBoard(nb); setPlayer(player); }
+    if (validMoves(nb, opp).length) {
+      setBoard(nb);
+      setPlayer(opp);
+    } else {
+      setBoard(nb);
+      setPlayer(player);
+    }
   };
 
   // 操作
@@ -193,6 +234,7 @@ export default function OthelloApp() {
     if ((aiSide === 1 && player === 1) || (aiSide === 2 && player === 2)) return; // AI手番は無効
     commitMove(r, c);
   };
+
   const undo = () => {
     const prev = history.at(-1);
     if (!prev) return;
@@ -200,17 +242,27 @@ export default function OthelloApp() {
     setPlayer(prev.player);
     setHistory(h => h.slice(0, -1));
   };
-  const passTurn = () => { if (moves.length === 0) setPlayer(opponent(player)); };
+
+  const passTurn   = () => { if (moves.length === 0) setPlayer(opponent(player)); };
   const backToHome = () => { setScreen('home'); hardReset(); setAiSide(0); };
 
   // ホームから開始
   const startGameFromHome = () => {
     hardReset();
     setSkin(preSkin); // ホームの選択を反映
-    if (preOpponent === 'player') { setAiSide(0); setScreen('game'); return; }
+    if (preOpponent === 'player') {
+      setAiSide(0);
+      setScreen('game');
+      return;
+    }
     setAiLevel(preLevel);
-    if (preFirst === 'you') { setAiSide(2); setPlayer(1); }
-    else { setAiSide(1); setPlayer(1); }
+    if (preFirst === 'you') {
+      setAiSide(2);
+      setPlayer(1);
+    } else {
+      setAiSide(1);
+      setPlayer(1);
+    }
     setScreen('game');
   };
 
@@ -221,18 +273,27 @@ export default function OthelloApp() {
     if (!aiTurn) return;
 
     const m = aiPick(board, player, aiLevel);
-    if (!m) { if (moves.length === 0) setPlayer(opponent(player)); return; }
+    if (!m) {
+      if (moves.length === 0) setPlayer(opponent(player));
+      return;
+    }
 
     setAiThinking(true);
     const id = setTimeout(() => {
       setAiThinking(false);
       if (!flipsForMove(board, m.r, m.c, player).length) return;
       setHistory(h => [...h, { board, player }]);
-      const nb = applyMove(board, m.r, m.c, player);
+      const nb  = applyMove(board, m.r, m.c, player);
       const opp = opponent(player);
-      if (validMoves(nb, opp).length) { setBoard(nb); setPlayer(opp); }
-      else { setBoard(nb); setPlayer(player); }
+      if (validMoves(nb, opp).length) {
+        setBoard(nb);
+        setPlayer(opp);
+      } else {
+        setBoard(nb);
+        setPlayer(player);
+      }
     }, 200);
+
     return () => clearTimeout(id);
   }, [board, player, aiSide, aiLevel, screen, moves]);
 
@@ -248,16 +309,30 @@ export default function OthelloApp() {
               <div className="font-semibold mb-3">対戦設定</div>
 
               <div className="flex gap-2 mb-3">
-                <button className={`flex-1 px-4 py-2 rounded ${preOpponent==='cpu'?'bg-emerald-600 text-white':'bg-white border'}`} onClick={()=>setPreOpponent('cpu')}>CPU</button>
-                <button className={`flex-1 px-4 py-2 rounded ${preOpponent==='player'?'bg-emerald-600 text-white':'bg-white border'}`} onClick={()=>setPreOpponent('player')}>Player</button>
+                <button
+                  className={`flex-1 px-4 py-2 rounded ${preOpponent==='cpu'?'bg-emerald-600 text-white':'bg-white border'}`}
+                  onClick={() => setPreOpponent('cpu')}
+                >
+                  CPU
+                </button>
+                <button
+                  className={`flex-1 px-4 py-2 rounded ${preOpponent==='player'?'bg-emerald-600 text-white':'bg-white border'}`}
+                  onClick={() => setPreOpponent('player')}
+                >
+                  Player
+                </button>
               </div>
 
-              {preOpponent==='cpu' && (
+              {preOpponent === 'cpu' && (
                 <>
                   <div className="text-sm mb-1">難易度</div>
                   <div className="flex gap-2 mb-3">
                     {(['easy','normal','hard'] as AiLevel[]).map(l => (
-                      <button key={l} className={`flex-1 px-4 py-2 rounded ${preLevel===l?'bg-emerald-600 text-white':'bg-white border'}`} onClick={()=>setPreLevel(l)}>
+                      <button
+                        key={l}
+                        className={`flex-1 px-4 py-2 rounded ${preLevel===l?'bg-emerald-600 text-white':'bg-white border'}`}
+                        onClick={() => setPreLevel(l)}
+                      >
                         {l==='easy'?'弱い':l==='normal'?'普通':'強い'}
                       </button>
                     ))}
@@ -265,8 +340,18 @@ export default function OthelloApp() {
 
                   <div className="text-sm mb-1">先手</div>
                   <div className="flex gap-2 mb-1">
-                    <button className={`flex-1 px-4 py-2 rounded ${preFirst==='you'?'bg-emerald-600 text-white':'bg-white border'}`} onClick={()=>setPreFirst('you')}>あなた（黒）</button>
-                    <button className={`flex-1 px-4 py-2 rounded ${preFirst==='cpu'?'bg-emerald-600 text-white':'bg-white border'}`} onClick={()=>setPreFirst('cpu')}>CPU（黒）</button>
+                    <button
+                      className={`flex-1 px-4 py-2 rounded ${preFirst==='you'?'bg-emerald-600 text-white':'bg-white border'}`}
+                      onClick={() => setPreFirst('you')}
+                    >
+                      あなた（黒）
+                    </button>
+                    <button
+                      className={`flex-1 px-4 py-2 rounded ${preFirst==='cpu'?'bg-emerald-600 text-white':'bg-white border'}`}
+                      onClick={() => setPreFirst('cpu')}
+                    >
+                      CPU（黒）
+                    </button>
                   </div>
                   <p className="text-xs text-gray-500">※ 黒が先手です。</p>
                 </>
@@ -278,7 +363,7 @@ export default function OthelloApp() {
                 {/* 黒 */}
                 <div className="rounded-lg bg-white border p-3">
                   <div className="text-xs text-gray-500 mb-2">黒のコマ</div>
-                                     <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     {CAT_OPTIONS.map(opt => {
                       const active = preSkin.black === opt.src;
                       return (
@@ -297,7 +382,7 @@ export default function OthelloApp() {
                 {/* 白 */}
                 <div className="rounded-lg bg-white border p-3">
                   <div className="text-xs text-gray-500 mb-2">白のコマ</div>
-                                     <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     {CAT_OPTIONS.map(opt => {
                       const active = preSkin.white === opt.src;
                       return (
@@ -316,7 +401,9 @@ export default function OthelloApp() {
               </div>
 
               <div className="h-3" />
-              <button className="w-full px-4 py-3 rounded bg-emerald-600 text-white" onClick={startGameFromHome}>ゲーム開始</button>
+              <button className="w-full px-4 py-3 rounded bg-emerald-600 text-white" onClick={startGameFromHome}>
+                ゲーム開始
+              </button>
             </div>
 
             <div className="rounded-xl bg-gray-50 p-4 sm:p-5 text-sm leading-relaxed">
