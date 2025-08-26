@@ -385,6 +385,7 @@ export default function OthelloApp() {
               })}
             </div>
           </div>
+          </div>
 
           {/* サイドバー */}
           <aside className="space-y-4">
