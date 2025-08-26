@@ -1,4 +1,5 @@
 'use client';
+import Image from "next/image";
 import React, { useEffect, useMemo, useState } from 'react';
 
 /** =======================
@@ -14,6 +15,17 @@ const DIRS: Array<[number, number]> = [
 
 type AiLevel = 'easy' | 'normal' | 'hard';
 type Screen = 'home' | 'game';
+
+// 猫スキン候補（public 直下のパス）
+const CAT_OPTIONS = [
+  { id: "american",  label: "アメリカンショートヘア",   src: "/pieces/american-shorthair.png" },
+  { id: "siamese",   label: "シャム",                 src: "/pieces/siamese.png" },
+  { id: "scottish",  label: "スコティッシュフォールド", src: "/pieces/scottish-fold.png" },
+  { id: "norwegian", label: "ノルウェージャンフォレスト", src: "/pieces/norwegian-forest.png" },
+  { id: "british",   label: "ブリティッシュショートヘア", src: "/pieces/british-shorthair.png" },
+];
+
+type Skin = { black: string; white: string };
 
 const initialBoard = (): Cell[][] => {
   const b: Cell[][] = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
@@ -140,6 +152,13 @@ export default function OthelloApp() {
   const [preLevel, setPreLevel] = useState<AiLevel>('normal');
   const [preFirst, setPreFirst] = useState<'you' | 'cpu'>('you');
 
+  // 猫スキン（ホーム選択＆ゲーム反映）
+  const [preSkin, setPreSkin] = useState<Skin>({
+    black: CAT_OPTIONS[0].src, // 黒=アメリカン
+    white: CAT_OPTIONS[1].src, // 白=シャム
+  });
+  const [skin, setSkin] = useState<Skin>(preSkin);
+
   // ゲーム状態
   const [board, setBoard] = useState<Cell[][]>(initialBoard);
   const [player, setPlayer] = useState<Cell>(1); // 1: Black
@@ -182,6 +201,7 @@ export default function OthelloApp() {
   // ホームから開始
   const startGameFromHome = () => {
     hardReset();
+    setSkin(preSkin); // ホームの選択を反映
     if (preOpponent === 'player') { setAiSide(0); setScreen('game'); return; }
     setAiLevel(preLevel);
     if (preFirst === 'you') { setAiSide(2); setPlayer(1); }
@@ -247,6 +267,49 @@ export default function OthelloApp() {
                 </>
               )}
 
+              {/* 猫スキン選択UI */}
+              <div className="text-sm mb-1 mt-3">コマ（猫スキン）</div>
+              <div className="grid grid-cols-2 gap-3">
+                {/* 黒 */}
+                <div className="rounded-lg bg-white border p-3">
+                  <div className="text-xs text-gray-500 mb-2">黒のコマ</div>
+                  <div className="grid grid-cols-5 gap-2">
+                    {CAT_OPTIONS.map(opt => {
+                      const active = preSkin.black === opt.src;
+                      return (
+                        <button
+                          key={`b-${opt.id}`}
+                          onClick={() => setPreSkin(s => ({ ...s, black: opt.src }))}
+                          className={`aspect-square rounded-lg border overflow-hidden ${active ? "ring-2 ring-emerald-500 border-emerald-500" : ""}`}
+                          aria-label={`黒: ${opt.label}`}
+                        >
+                          <img src={opt.src} alt={opt.label} className="w-full h-full object-contain" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                {/* 白 */}
+                <div className="rounded-lg bg-white border p-3">
+                  <div className="text-xs text-gray-500 mb-2">白のコマ</div>
+                  <div className="grid grid-cols-5 gap-2">
+                    {CAT_OPTIONS.map(opt => {
+                      const active = preSkin.white === opt.src;
+                      return (
+                        <button
+                          key={`w-${opt.id}`}
+                          onClick={() => setPreSkin(s => ({ ...s, white: opt.src }))}
+                          className={`aspect-square rounded-lg border overflow-hidden ${active ? "ring-2 ring-emerald-500 border-emerald-500" : ""}`}
+                          aria-label={`白: ${opt.label}`}
+                        >
+                          <img src={opt.src} alt={opt.label} className="w-full h-full object-contain" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
               <div className="h-3" />
               <button className="w-full px-4 py-3 rounded bg-emerald-600 text-white" onClick={startGameFromHome}>ゲーム開始</button>
             </div>
@@ -271,7 +334,7 @@ export default function OthelloApp() {
   return (
     <div className="min-h-[100dvh] w-full flex items-start justify-center p-4 sm:p-6 pb-24">
       <div className="w-full max-w-5xl rounded-2xl border shadow-sm p-4 sm:p-6 bg-white">
-        <header className="flex flex-wrap items中心 gap-2 justify-between mb-4">
+        <header className="flex flex-wrap items-center gap-2 justify-between mb-4">
           <h2 className="text-xl sm:text-2xl font-semibold">Othello / Reversi</h2>
           <div className="hidden sm:flex gap-2">
             <button className="px-3 py-2 rounded border" onClick={backToHome}>Home</button>
@@ -284,20 +347,38 @@ export default function OthelloApp() {
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 sm:gap-6">
           {/* 盤面 */}
           <div className="flex justify-center">
-            <div className="grid touch-manipulation select-none"
-                 style={{ gridTemplateColumns: `repeat(${SIZE}, minmax(0,1fr))`, width: 'min(96vw, 640px)' }}>
-              {Array.from({ length: SIZE * SIZE }, (_, i) => {
+            <div className="p-4 rounded-xl frame-bg shadow-lg">
+              <div
+                className="grid touch-manipulation select-none board-bg"
+                style={{ gridTemplateColumns: `repeat(${SIZE}, minmax(0,1fr))`, width: 'min(96vw, 640px)' }}
+              >
+                {Array.from({ length: SIZE * SIZE }, (_, i) => {
                 const r = Math.floor(i / SIZE), c = i % SIZE;
                 const cell = board[r][c];
                 const legal = moves.some(m => m.r===r && m.c===c);
                 return (
-                  <button key={`${r}-${c}`} onClick={()=>place(r,c)}
-                          className={`aspect-square border border-emerald-900 bg-emerald-700 relative ${legal?'hover:bg-emerald-600 active:bg-emerald-500':''}`}>
+                  <button
+                    key={`${r}-${c}`}
+                    onClick={()=>place(r,c)}
+                    className={`aspect-square border border-emerald-900 bg-emerald-700 relative ${legal?'hover:bg-emerald-600 active:bg-emerald-500':''}`}
+                    aria-label={`cell ${r},${c}`}
+                  >
                     {/* 合法手ヒント */}
-                    {cell===0 && legal && <span className="absolute inset-0 m-auto block rounded-full" style={{height:12,width:12,background:'rgba(0,0,0,.35)'}}/>}
-                    {/* 石 */}
-                    {cell!==0 && (
-                      <span className={`absolute inset-1 rounded-full shadow-inner ${cell===1?'bg-black':'bg-white'}`} />
+                    {cell===0 && legal && (
+                      <span className="absolute inset-0 m-auto block rounded-full" style={{height:12,width:12,background:'rgba(0,0,0,.35)'}}/>
+                    )}
+                    {/* 石（猫ピース表示） */}
+                    {cell !== 0 && (
+                      <span className="absolute inset-1 flex items-center justify-center">
+                        <Image
+                          src={cell === 1 ? skin.black : skin.white}
+                          alt={cell === 1 ? "Black cat piece" : "White cat piece"}
+                          width={128}
+                          height={128}
+                          style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                          priority={false}
+                        />
+                      </span>
                     )}
                   </button>
                 );
